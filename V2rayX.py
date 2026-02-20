@@ -2931,17 +2931,33 @@ class MainWindow(QMainWindow):
             candidates = []
             argv0 = os.path.abspath(str(sys.argv[0] or "")).strip()
             runtime_exe = os.path.abspath(str(sys.executable or "")).strip()
+            app_exe_name = os.path.splitext(os.path.basename(str(__file__ or "V2rayX.py")))[0] + ".exe"
+            app_exe_path = os.path.join(BASE_DIR, app_exe_name)
+
+            def _is_python_host(path_text):
+                name = os.path.basename(str(path_text or "")).strip().lower()
+                return name in {"python.exe", "pythonw.exe"}
 
             # Always prefer relaunching the current executable when possible.
-            if argv0.lower().endswith(".exe") and os.path.exists(argv0):
+            if os.path.exists(app_exe_path):
+                candidates.append((app_exe_path, list(sys.argv[1:])))
+
+            if argv0.lower().endswith(".exe") and os.path.exists(argv0) and not _is_python_host(argv0):
                 candidates.append((argv0, list(sys.argv[1:])))
 
             # Fallback to runtime executable for source-mode runs.
-            if runtime_exe and (not candidates or runtime_exe != candidates[0][0]):
+            if runtime_exe and not _is_python_host(runtime_exe) and (not candidates or runtime_exe not in {c[0] for c in candidates}):
                 if getattr(sys, "frozen", False):
                     candidates.append((runtime_exe, list(sys.argv[1:])))
                 else:
                     candidates.append((runtime_exe, [os.path.abspath(__file__)] + list(sys.argv[1:])))
+
+            if not candidates:
+                if getattr(sys, "frozen", False):
+                    if runtime_exe:
+                        candidates.append((runtime_exe, list(sys.argv[1:])))
+                else:
+                    candidates.append((os.path.abspath(str(sys.executable or "python")), [os.path.abspath(__file__)] + list(sys.argv[1:])))
 
             def shell_execute_runas(exe_path, args):
                 if not exe_path or not os.path.exists(exe_path):
