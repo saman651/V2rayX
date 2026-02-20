@@ -13,6 +13,7 @@ import socket
 import ctypes
 import signal
 import io
+import errno
 import urllib.request
 import urllib.error
 import queue
@@ -1604,6 +1605,99 @@ def build_bootstrap_config():
     }
 
 
+def _read_primary_inbound_bind(config_path, default_host="127.0.0.1", default_port=10808):
+    try:
+        with open(config_path, "r", encoding="utf8") as f:
+            cfg = json.load(f)
+        inbounds = cfg.get("inbounds", [])
+        if isinstance(inbounds, list) and inbounds:
+            first = inbounds[0] if isinstance(inbounds[0], dict) else {}
+            host = str(first.get("listen", default_host) or default_host).strip() or default_host
+            port = int(first.get("port", default_port))
+            return host, port
+    except Exception:
+        pass
+    return default_host, int(default_port)
+
+
+def _find_windows_listening_pid(host, port):
+    target = f":{int(port)}"
+    try:
+        result = subprocess.run(
+            ["netstat", "-ano", "-p", "tcp"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            creationflags=NO_WINDOW_FLAG,
+        )
+        for raw in (result.stdout or "").splitlines():
+            line = " ".join(raw.split())
+            if not line:
+                continue
+            parts = line.split(" ")
+            if len(parts) < 5:
+                continue
+            local_addr = parts[1]
+            state = parts[3].upper()
+            pid_text = parts[4]
+            if state != "LISTENING":
+                continue
+            if not local_addr.endswith(target):
+                continue
+            if host and host not in {"0.0.0.0", "::"}:
+                if not local_addr.startswith(f"{host}:"):
+                    continue
+            if pid_text.isdigit():
+                return int(pid_text)
+    except Exception:
+        return None
+    return None
+
+
+def _resolve_windows_process_name(pid):
+    if not pid:
+        return ""
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {int(pid)}", "/FO", "CSV", "/NH"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+            creationflags=NO_WINDOW_FLAG,
+        )
+        line = (result.stdout or "").strip()
+        if not line or line.startswith("INFO:"):
+            return ""
+        if line.startswith('"') and '","' in line:
+            first = line.split('","', 1)[0].strip('"')
+            return first.strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _check_inbound_port_available(config_path):
+    host, port = _read_primary_inbound_bind(config_path)
+    family = socket.AF_INET6 if ":" in str(host) else socket.AF_INET
+    probe = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        probe.bind((host, int(port)))
+        return True, host, int(port), None, ""
+    except OSError as e:
+        if getattr(e, "errno", None) == errno.EADDRINUSE:
+            pid = _find_windows_listening_pid(host, port)
+            proc_name = _resolve_windows_process_name(pid)
+            return False, host, int(port), pid, proc_name
+        return False, host, int(port), None, ""
+    finally:
+        try:
+            probe.close()
+        except Exception:
+            pass
+
+
 def start_xray(log_callback=None, verify_start=False, verify_seconds=2.0):
     global xray_process
 
@@ -1613,6 +1707,17 @@ def start_xray(log_callback=None, verify_start=False, verify_seconds=2.0):
 
         # Kill any existing Xray process before starting a new one
         stop_xray_process(log_callback)
+
+        ok_port, bind_host, bind_port, owner_pid, owner_name = _check_inbound_port_available(CONFIG_PATH)
+        if not ok_port:
+            if log_callback:
+                if owner_pid:
+                    owner_text = f"{owner_name} (PID {owner_pid})" if owner_name else f"PID {owner_pid}"
+                    log_callback(f"[Xray] port conflict: {bind_host}:{bind_port} is in use by {owner_text}")
+                else:
+                    log_callback(f"[Xray] port conflict: {bind_host}:{bind_port} is already in use")
+                log_callback("[Xray] stop/close the conflicting app or change inbound port, then retry")
+            return False
 
         # Start the new Xray process
         proc = subprocess.Popen(
