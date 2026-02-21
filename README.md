@@ -2,18 +2,9 @@
 
 [![Telegram Channel](https://img.shields.io/badge/Telegram%20Channel-@digitkeey-2CA5E0?style=for-the-badge&logo=telegram)](https://t.me/digitkeey)
 
-## About
-V2rayX is a Windows desktop client for managing and running Xray with a simple GUI.
-It supports profile management, subscriptions, system proxy control, ping/speed tests, and tunnel mode.
 
-- Tech stack: Python + PySide6
-- Runtime: Xray core (bundled in release package)
-- Target platform: Windows 10/11 (64-bit)
-
-## فارسی
 <div dir="rtl" align="right">
 
-`V2rayX` یک کلاینت دسکتاپ ویندوز برای مدیریت و اجرای Xray است. این برنامه مدیریت پروفایل، سابسکریپشن، تست `Ping/Speed`، پراکسی سیستم و Tunnel Mode را در یک رابط ساده ارائه می‌دهد.
 
 ### امکانات اصلی
 - مدیریت پروفایل‌ها (`vmess`, `vless`, `trojan`, `ss`, `hy2`, `tuic`, `socks`, `wireguard`, ...)
@@ -39,10 +30,6 @@ It supports profile management, subscriptions, system proxy control, ping/speed 
 </div>
 
 ---
-
-## English
-`V2rayX` is a Windows desktop client for managing and running Xray.
-It provides profile management, subscription updates, `Ping/Speed` tests, system proxy control, and tunnel mode in a single UI.
 
 ### Key Features
 - Profile management (`vmess`, `vless`, `trojan`, `ss`, `hy2`, `tuic`, `socks`, `wireguard`, ...)
